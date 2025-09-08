@@ -1,20 +1,34 @@
 import torch
+import numpy as np
 import torch.nn.functional as F
 from typing import List, Dict, Any
 from transformers import DynamicCache
 
 def KVCache_merge(caches: List[DynamicCache]):
     results = DynamicCache()
+    # ----- 檢查是否全部都為空 ----- #
+    empty_check = [c.key_cache[0] is None for c in caches]
+    if np.all(empty_check):
+        return results
 
     # ----- 取出layer ----- #
-    seq_len = max(c.get_seq_length(layer_idx=0) for c in caches)
-    n_layers = len(caches[0].key_cache)
+    seq_len = max(c.get_seq_length(layer_idx=0) for c, is_empty in zip(caches, empty_check) if not is_empty)
+    first_non_empty_cache = next(c for c, is_empty in zip(caches, empty_check) if not is_empty)
+    n_layers = len(first_non_empty_cache.key_cache)
+    n_heads, hid_dim = first_non_empty_cache.key_cache[0].shape[1], first_non_empty_cache.key_cache[0].shape[3]
     
     # ----- 建立cache ----- #
     for i in range(n_layers):
         # ----- 依照不同layer去建立cache ----- #
         keys, values = list(), list()
         for c in caches:
+            if c.key_cache[0] is None:
+                # ----- 如果是空的，則全部補0 ----- #
+                key_tensor = torch.zeros((1, n_heads, seq_len, hid_dim), dtype=torch.float32)
+                value_tensor = torch.zeros((1, n_heads, seq_len, hid_dim), dtype=torch.float32)
+                keys += [key_tensor]
+                values += [value_tensor]
+                continue
             key_tensor = c.key_cache[i]
             value_tensor = c.value_cache[i]
 
@@ -22,8 +36,8 @@ def KVCache_merge(caches: List[DynamicCache]):
             curr_seq_len = key_tensor.shape[2]
             if curr_seq_len < seq_len:
                 padding_to_add = seq_len - curr_seq_len
-                key_tensor = F.pad(key_tensor, (0, 0, 0, padding_to_add), "constant", 0)
-                value_tensor = F.pad(value_tensor, (0, 0, 0, padding_to_add), "constant", 0)
+                key_tensor = F.pad(key_tensor, (0, 0, padding_to_add, 0), "constant", 0)
+                value_tensor = F.pad(value_tensor, (0, 0, padding_to_add, 0), "constant", 0)
 
             keys += [key_tensor]
             values += [value_tensor]

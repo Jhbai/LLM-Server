@@ -10,6 +10,8 @@ MAX_NEW_TOKENS_SIZE = 16
 def infer(model: Gemma3ForConditionalGeneration, 
           input_ids: List[torch.Tensor], 
           kv_cache: List[DynamicCache]):
+    if len(input_ids) == 0:
+        return None, None
     try:
         # ----- 宣告物件 ----- #
         device = model.device
@@ -50,7 +52,10 @@ def infer(model: Gemma3ForConditionalGeneration,
  
     finally:
         for item in ("input_ids", "outputs", "logits", "next_token", "token_id"):
-            exec(f"del {item}")
+            try:
+                exec(f"del {item}")
+            except:
+                pass
         gc.collect()
         torch.cuda.empty_cache()
         torch.cuda.synchronize()

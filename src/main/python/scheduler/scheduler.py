@@ -14,31 +14,42 @@ class RequestManager:
         self.DecodeList: Dict[model.Request.request_id, model.Request] = OrderedDict()
 
     def add_request(self, request: model.Request):
-        if request.status is model.RequestStatus.PREFILL:
+        if request.status is model.RequestStatus.PREFILLING:
             self.PrefillList[request.request_id] = request
-        elif request.status is model.RequestStatus.DECODE:
+        elif request.status is model.RequestStatus.DECODING:
             self.DecodeList[request.request_id] = request
 
     def step(self):
-        self.idx = list()
-        self.jobs = list()
+        self.idx = list() # 之後拿來更新cache
+        d_input_ids = list()
+        d_caches = list()
+        p_input_ids = list()
+        p_caches = list()
         # ----- 先取input_ids(同時更新狀態)，再放回List中 ----- #
+
+        # -Decoding- #
         for _ in range(min([config.BATCH_SIZE, len(self.DecodeList)])):
             key, value = self.DecodeList.popitem(last=False)
-            self.jobs += [(value.get_ids(), value.kv_cache)]
+            d_input_ids += [value.get_ids()]
+            d_caches += [value.kv_cache]
             self.idx += [(value.status, key)]
             self.DecodeList[key] = value
-        for _ in range(config.BATCH_SIZE - len(self.jobs)):
+        
+        # -Prefilling- #
+        for _ in range(min([config.BATCH_SIZE - len(d_input_ids), len(self.PrefillList)])):
             if len(self.PrefillList) == 0:
                 break
             key, value = self.PrefillList.popitem(last=False)
-            self.jobs += [(value.get_ids(), value.kv_cache)]
+            ids = value.get_ids()
+            if len(ids) < config.PREFILL_TOKEN_SIZE:
+                zeros = torch.zeros((1, config.PREFILL_TOKEN_SIZE - ids.shape[1]), dtype=torch.long)
+                ids = torch.cat([ids, zeros], dim=1)
+            p_input_ids += [ids]
+            p_caches += [value.kv_cache]
             self.idx += [(value.status, key)]
-            if value.status is model.RequestStatus.DECODING:
-                self.DecodeList[key] = value
-            else:
+            if value.status is model.RequestStatus.PREFILLING:
                 self.PrefillList[key] = value
-        return self.jobs
+        return d_input_ids, d_caches, p_input_ids, p_caches
     
     def update(self, caches: List[DynamicCache]):
         # ----- 更新cache ----- #
