@@ -72,14 +72,14 @@ def KVCache_split(cache: DynamicCache):
 
         # ----- seq_len 儲存長度計算 ----- #
         if len(non_zero_indices) == 0: original_seq_len = 0
-        else: original_seq_len = non_zero_indices.max().item() + 1
+        else: original_seq_len = non_zero_indices.min().item()
             
         for layer_idx in range(n_layers):
             key_slice = cache.key_cache[layer_idx][i:i+1]
             value_slice = cache.value_cache[layer_idx][i:i+1]
 
-            truncated_key = key_slice[:, :, :original_seq_len, :]
-            truncated_value = value_slice[:, :, :original_seq_len, :]
+            truncated_key = key_slice[:, :, original_seq_len:, :]
+            truncated_value = value_slice[:, :, original_seq_len:, :]
             
             results[i].update(
                 key_states=truncated_key,
@@ -89,6 +89,6 @@ def KVCache_split(cache: DynamicCache):
         
         # 6. 更新這個 cache 的 seen_tokens
         results[i].seen_tokens = original_seq_len
-
+ 
     return results
     
