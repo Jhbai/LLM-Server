@@ -17,6 +17,7 @@ def infer(model: Gemma3ForConditionalGeneration,
         seq_len = config.PREFILL_TOKEN_SIZE
 
         # ----- 整合所有input ----- #
+        """[TODO] 保持結構，需要從單一inference的架構中，去驗證這塊邏輯是否正確"""
         _input_ids = torch.cat(input_ids, dim=0)
         cache = cache_manager.KVCache_merge(kv_caches)
         for i in range(len(_input_ids)):

@@ -33,6 +33,10 @@ class Request:
         self.seq_len = self.input_ids.shape[1] # (n_batch, seq_len)
 
     def get_ids(self):
+        # ----- δ(DECODING, Generate_Token) ----- #
+        if self.status is RequestStatus.DECODING: 
+            return self.input_ids[:, -1:]
+        
         # ----- 檢查 Prefilling 狀態 ----- #
         st = self.tidx
         ed = int(np.min([self.tidx+config.PREFILL_TOKEN_SIZE, self.get_sequence_length()-1]))

@@ -22,6 +22,7 @@ def infer(model: Gemma3ForConditionalGeneration,
         merged_cache = cache_manager.KVCache_merge(kv_cache)
 
         # ----- 製作attention_mask的padding ----- #
+        """[TODO] 保持結構，需要從單一inference的架構中，去驗證這塊邏輯是否正確"""
         front_padding = list()
         sample_cache = merged_cache.key_cache[0]
         for i in range(n_batch):
