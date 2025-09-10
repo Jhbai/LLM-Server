@@ -20,14 +20,21 @@ def infer(model: Gemma3ForConditionalGeneration,
         _input_ids = torch.cat(input_ids, dim=0)
         cache = cache_manager.KVCache_merge(kv_caches)
         for i in range(len(_input_ids)):
+            sample_cache = cache.key_cache[0]
+            if sample_cache is not None:
+                sample_tensor = sample_cache[i:i+1] # (1, n_heads, seq_len, head_dim)
+                sum_abs = torch.abs(sample_tensor).sum(dim=(1, 3)).squeeze(0)
+                non_zero_indices = torch.where(sum_abs > 1e-6)[0] # (seq_len, )
+                front_padding = [0]*non_zero_indices[0].item()
+            else:
+                front_padding = []
             curr_seq_len = torch.where(_input_ids[i] == 0)[0].tolist()
             if curr_seq_len:
                 curr_seq_len = curr_seq_len[0]
             else:
                 curr_seq_len = _input_ids.shape[1]
             diff_seq_len = seq_len - curr_seq_len
-            attn_mask += [[1]*curr_seq_len + [0]*diff_seq_len]
-        """[TODO] 這邊的attn_mask應該要改成動態的，要跟隨cache的長度變動。例如有的task是剛建立cache，有的是已經有cache了"""
+            attn_mask += [front_padding + [1]*curr_seq_len + [0]*diff_seq_len]
 
         # ----- Prefilling過程 ----- #
         with torch.no_grad():

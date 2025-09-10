@@ -11,7 +11,7 @@ def infer(model: Gemma3ForConditionalGeneration,
           input_ids: List[torch.Tensor], 
           kv_cache: List[DynamicCache]):
     if len(input_ids) == 0:
-        return None, None
+        return None, []
     try:
         # ----- 宣告物件 ----- #
         device = model.device

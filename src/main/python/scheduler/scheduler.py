@@ -49,12 +49,16 @@ class RequestManager:
             self.idx += [(value.status, key)]
             if value.status is model.RequestStatus.PREFILLING:
                 self.PrefillList[key] = value
+            elif value.status is model.RequestStatus.DECODING:
+                self.DecodeList[key] = value
         return d_input_ids, d_caches, p_input_ids, p_caches
     
     def update(self, caches: List[DynamicCache]):
         # ----- 更新cache ----- #
-        for i, status, _id in enumerate(self.idx):
+        i = 0
+        for status, _id in self.idx:
             if status is model.RequestStatus.PREFILLING:
                 self.PrefillList[_id].kv_cache = caches[i]
             elif status is model.RequestStatus.DECODING:
                 self.DecodeList[_id].kv_cache = caches[i]
+            i += 1
