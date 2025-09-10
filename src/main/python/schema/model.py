@@ -49,7 +49,7 @@ class Request:
         return ids
     
     def get_remain_length(self):
-        return self.seq_len - self.tids
+        return self.seq_len - self.tidx
 
     def get_sequence_length(self):
         return self.seq_len

@@ -21,6 +21,15 @@ def infer(model: Gemma3ForConditionalGeneration,
         generated_ids = [[] for _ in range(n_batch)]
         merged_cache = cache_manager.KVCache_merge(kv_cache)
 
+        # ----- 製作attention_mask的padding ----- #
+        front_padding = list()
+        sample_cache = merged_cache.key_cache[0]
+        for i in range(n_batch):
+            sample_tensor = sample_cache[i:i+1] # (1, n_heads, seq_len, head_dim)
+            sum_abs = torch.abs(sample_tensor).sum(dim=(1, 3)).squeeze(0)
+            non_zero_indices = torch.where(sum_abs > 1e-6)[0] # (seq_len, )
+            front_padding += [[0]*non_zero_indices[0].item()]
+
         # ----- Decoding Loop ----- #
         for step in range(MAX_NEW_TOKENS_SIZE):
             # ----- 全部都做完了 ----- #
@@ -32,12 +41,18 @@ def infer(model: Gemma3ForConditionalGeneration,
             cache_len = merged_cache.get_seq_length(layer_idx=0)
             position_ids = torch.tensor([[cache_len]], device=device).expand(n_batch, -1)
 
+            attention_mask = list()
+            for i in range(n_batch):
+                curr_seq_len = cache_len - non_zero_indices[0].item()
+                attention_mask += [front_padding[i] + [1]*curr_seq_len]
+
             # ----- 生成tokens ----- #
             with torch.no_grad(): 
                 outputs = model(
                     input_ids=input_ids_tensor,
                     past_key_values=merged_cache,
                     position_ids=position_ids,
+                    attention_mask=torch.LongTensor(attention_mask).to(device),
                     use_cache=True)
             logits = outputs.logits[:, -1, :]
             next_token = torch.argmax(logits, dim=-1)

@@ -87,8 +87,5 @@ def KVCache_split(cache: DynamicCache):
                 layer_idx=layer_idx
             )
         
-        # 6. 更新這個 cache 的 seen_tokens
-        results[i].seen_tokens = original_seq_len
- 
     return results
     

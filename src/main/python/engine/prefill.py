@@ -10,7 +10,7 @@ def infer(model: Gemma3ForConditionalGeneration,
           input_ids: List[torch.Tensor], 
           kv_caches: List[DynamicCache]):
     if len(input_ids) == 0:
-        return None, None
+        return None, []
     try:
         cache = None
         attn_mask = list()
