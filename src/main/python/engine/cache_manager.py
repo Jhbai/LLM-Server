@@ -12,7 +12,7 @@ def KVCache_merge(caches: List[DynamicCache]):
         return results
 
     # ----- 取出layer ----- #
-    seq_len = max(c.get_seq_length(layer_idx=0) for c, is_empty in zip(caches, empty_check) if not is_empty)
+    seq_len = max([c.get_seq_length(layer_idx=0) for c, is_empty in zip(caches, empty_check) if not is_empty])
     first_non_empty_cache = next(c for c, is_empty in zip(caches, empty_check) if not is_empty)
     n_layers = len(first_non_empty_cache.key_cache)
     n_heads, hid_dim = first_non_empty_cache.key_cache[0].shape[1], first_non_empty_cache.key_cache[0].shape[3]
@@ -24,15 +24,15 @@ def KVCache_merge(caches: List[DynamicCache]):
         for c in caches:
             if c.key_cache[0] is None:
                 # ----- 如果是空的，則全部補0 ----- #
-                key_tensor = torch.zeros((1, n_heads, seq_len, hid_dim), dtype=torch.float32)
-                value_tensor = torch.zeros((1, n_heads, seq_len, hid_dim), dtype=torch.float32)
+                key_tensor = torch.zeros((1, n_heads, seq_len, hid_dim), dtype=torch.bfloat16)
+                value_tensor = torch.zeros((1, n_heads, seq_len, hid_dim), dtype=torch.bfloat16)
                 keys += [key_tensor]
                 values += [value_tensor]
                 continue
             key_tensor = c.key_cache[i]
             value_tensor = c.value_cache[i]
 
-            # ----- 過長的部分做padding ----- # 
+            # ----- 過長的部分做padding(左padding) ----- # 
             curr_seq_len = key_tensor.shape[2]
             if curr_seq_len < seq_len:
                 padding_to_add = seq_len - curr_seq_len
@@ -51,7 +51,7 @@ def KVCache_merge(caches: List[DynamicCache]):
     results.seen_tokens = seq_len
     return results
 
-def KVCache_split(cache: DynamicCache):
+def KVCache_split(cache: DynamicCache, eds: List[int]):
     # ----- 把cache的layer跟數量定義出來 ----- #
     batch_size = cache.key_cache[0].shape[0]
     n_layers = len(cache.key_cache)
@@ -64,8 +64,9 @@ def KVCache_split(cache: DynamicCache):
         # ----- cache的原始長度，只要用第0層來找即可 ----- #
         """
         因為padding是用0填充，所以如果 hid_dim 和 n_head 都是0，那該位必定padding
-        最終找到最後一個非零位置
+        最終找到第一個非零位置
         """
+        ed = eds[i]
         sample_key_tensor = cache.key_cache[0][i:i+1] # (1, n_heads, seq_len, hid_dim)
         sum_abs = torch.abs(sample_key_tensor).sum(dim=(1, 3)).squeeze(0)
         non_zero_indices = torch.where(sum_abs > 1e-6)[0] # (seq_len, )
@@ -78,8 +79,12 @@ def KVCache_split(cache: DynamicCache):
             key_slice = cache.key_cache[layer_idx][i:i+1]
             value_slice = cache.value_cache[layer_idx][i:i+1]
 
-            truncated_key = key_slice[:, :, original_seq_len:, :]
-            truncated_value = value_slice[:, :, original_seq_len:, :]
+            if ed is not None:
+                truncated_key = key_slice[:, :, original_seq_len:ed, :]
+                truncated_value = value_slice[:, :, original_seq_len:ed, :]
+            else:
+                truncated_key = key_slice[:, :, original_seq_len:, :]
+                truncated_value = value_slice[:, :, original_seq_len:, :]
             
             results[i].update(
                 key_states=truncated_key,

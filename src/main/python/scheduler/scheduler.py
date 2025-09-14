@@ -34,7 +34,6 @@ class RequestManager:
             decoding_requests += [value]
             d_input_ids += [value.get_ids()]
             d_caches += [value.kv_cache]
-            self.idx += [(value.status, key)]
         
         # -Prefilling- #
         for _ in range(min([config.BATCH_SIZE - len(d_input_ids), len(self.PrefillList)])):
@@ -48,10 +47,7 @@ class RequestManager:
             p_input_ids += [ids]
             p_caches += [value.kv_cache]
             self.idx += [(value.status, key)]
-            if value.status is model.RequestStatus.PREFILLING:
-                self.PrefillList[key] = value
-            if value.status is model.RequestStatus.DECODING: # δ(PREFILLING, Prefilling_Complete) = Decoding
-                self.DecodeList[key] = value
+            self.PrefillList[key] = value
         return d_input_ids, d_caches, p_input_ids, p_caches, decoding_requests # 多輸出 decoding_requests，讓外面可以接續生成
     
     def update(self, caches: List[DynamicCache]):
@@ -60,4 +56,10 @@ class RequestManager:
         for status, _id in self.idx:
             if status is model.RequestStatus.PREFILLING:
                 self.PrefillList[_id].kv_cache = caches[i]
+
+            # ----- 從update手段去啟動Decoding的轉移函數 ----- #
+            elif status is model.RequestStatus.DECODING: # δ(PREFILLING, Prefilling_Complete) = Decoding
+                decoding = self.PrefillList.pop(_id)
+                self.DecodeList[_id] = decoding
+                self.DecodeList[_id].kv_cache = caches[i]
             i += 1
