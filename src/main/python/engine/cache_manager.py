@@ -24,8 +24,8 @@ def KVCache_merge(caches: List[DynamicCache]):
         for c in caches:
             if c.key_cache[0] is None:
                 # ----- 如果是空的，則全部補0 ----- #
-                key_tensor = torch.zeros((1, n_heads, seq_len, hid_dim), dtype=torch.bfloat16)
-                value_tensor = torch.zeros((1, n_heads, seq_len, hid_dim), dtype=torch.bfloat16)
+                key_tensor = torch.zeros((1, n_heads, seq_len, hid_dim), dtype=torch.bfloat16).to("cuda")
+                value_tensor = torch.zeros((1, n_heads, seq_len, hid_dim), dtype=torch.bfloat16).to("cuda")
                 keys += [key_tensor]
                 values += [value_tensor]
                 continue
@@ -36,8 +36,8 @@ def KVCache_merge(caches: List[DynamicCache]):
             curr_seq_len = key_tensor.shape[2]
             if curr_seq_len < seq_len:
                 padding_to_add = seq_len - curr_seq_len
-                key_tensor = F.pad(key_tensor, (0, 0, padding_to_add, 0), "constant", 0)
-                value_tensor = F.pad(value_tensor, (0, 0, padding_to_add, 0), "constant", 0)
+                key_tensor = F.pad(key_tensor, (0, 0, padding_to_add, 0), "constant", 0).to("cuda")
+                value_tensor = F.pad(value_tensor, (0, 0, padding_to_add, 0), "constant", 0).to("cuda")
 
             keys += [key_tensor]
             values += [value_tensor]

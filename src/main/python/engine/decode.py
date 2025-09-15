@@ -7,9 +7,11 @@ from src.main.python.engine import cache_manager
 from transformers import DynamicCache, Gemma3ForConditionalGeneration
 MAX_NEW_TOKENS_SIZE = 16
 
-def infer(model: Gemma3ForConditionalGeneration, 
-          input_ids: List[torch.Tensor], 
-          kv_caches: List[DynamicCache]):
+def infer(model: Gemma3ForConditionalGeneration,       
+                 input_ids: List[torch.Tensor], 
+                 kv_caches: List[DynamicCache],
+                 uids: List[str],
+                 ):
     if len(input_ids) == 0:
         return None, []
     try:
@@ -18,8 +20,9 @@ def infer(model: Gemma3ForConditionalGeneration,
         n_batch = len(kv_caches)
         eos_token_ids = [1, 106] # processor.tokenizer.eos_token_id == 1
         unfinished_sequences = torch.ones(n_batch, dtype=torch.long, device=device)
-        generated_ids = [[] for _ in range(n_batch)]
+        generated_ids = {uid: list() for uid in uids}
         merged_cache = cache_manager.KVCache_merge(kv_caches)
+        # print("Decode Cache Shape:", merged_cache.key_cache[0].shape)
 
         # ----- 將input做合併 ----- #
         input_ids_tensor = torch.cat(input_ids, dim=0).to(device)
@@ -33,7 +36,7 @@ def infer(model: Gemma3ForConditionalGeneration,
             
             # ----- 計算position_ids ----- #
             cache_len = merged_cache.get_seq_length(layer_idx=0)
-            position_ids = torch.tensor([[cache_len+1]], device=device).expand(n_batch, -1)
+            position_ids = torch.tensor([[cache_len-1]], device=device).expand(n_batch, -1)
 
             # ----- 生成tokens ----- #
             with torch.no_grad():
@@ -46,7 +49,7 @@ def infer(model: Gemma3ForConditionalGeneration,
             next_token = torch.argmax(logits, dim=-1)
             for i in range(n_batch):
                 if unfinished_sequences[i]:
-                    generated_ids[i].append(next_token[i].item())
+                    generated_ids[uids[i]].append(next_token[i].item())
             input_ids_tensor = next_token.unsqueeze(1)
             is_eos = torch.isin(next_token, torch.tensor(eos_token_ids, device=device))
             unfinished_sequences.mul_(~is_eos) # in-place更新
@@ -54,7 +57,7 @@ def infer(model: Gemma3ForConditionalGeneration,
         # ----- 找EOS位置 ----- #
         eds = list()
         for i in range(n_batch):
-            generated_length = len(generated_ids[i])
+            generated_length = len(generated_ids[uids[i]])
             _idx = generated_length - MAX_NEW_TOKENS_SIZE
             eds += [_idx if _idx < 0 else None]
 

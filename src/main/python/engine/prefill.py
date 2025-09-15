@@ -6,7 +6,7 @@ from src.main.python.config import config
 from src.main.python.engine import cache_manager
 from transformers import DynamicCache, Gemma3ForConditionalGeneration
 
-def infer(model: Gemma3ForConditionalGeneration, 
+def infer(model: Gemma3ForConditionalGeneration,  
           input_ids: List[torch.Tensor], 
           kv_caches: List[DynamicCache]):
     if len(input_ids) == 0:
@@ -25,6 +25,7 @@ def infer(model: Gemma3ForConditionalGeneration,
                 use_cache=True,
                 past_key_values=cache,
                 )
+        # print("Prefill Cache Shape:", cache.key_cache[0].shape)
         # ----- 拆解cache ----- #
         eds = []
         for ids in input_ids:
