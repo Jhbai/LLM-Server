@@ -55,7 +55,7 @@ def Inference_Engine():
     llm_model = llm_model.eval()
 
     while True:
-        try:
+        if not TaskQueue.empty():
             ids, request_id = TaskQueue.get_nowait()
             Cache = CacheDict.get(request_id, DynamicCache())
             request = model.Request(
@@ -65,8 +65,6 @@ def Inference_Engine():
                                 kv_cache = Cache
             )
             _scheduler.add_request(request)
-        except TaskQueue.Empty:
-            pass
         d_input_ids, d_caches, p_input_ids, p_caches, decode_requests = _scheduler.step()
         UUID = [r.request_id for r in decode_requests]
         TEXT, DCACHES = decode.infer(llm_model, d_input_ids, d_caches, UUID)
@@ -75,18 +73,17 @@ def Inference_Engine():
 
         if TEXT is not None:
             for i, uid in enumerate(UUID):
-                ResDict[uid] = (TEXT[uid], DCACHES[i])
+                ResDict[uid] = TEXT[uid]
+                CacheDict[uid] = DCACHES[i]
                 
 async def RequestsHandler(uid):
     text = ""
     while "<end_of_turn>" not in text:
-        ids, cache = ResDict[uid]
-        CacheDict[uid] = cache
+        ids = ResDict[uid]
         input_ids = torch.tensor(ids[-1:]).unsqueeze(0)
-        TaskQueue.put(input_ids, uid)
+        TaskQueue.put((input_ids, uid))
         text += tokenizer.decode(ids, skip_special_tokens=True)
         yield text
-    CacheDict[uid] = cache
     
 # ----- 建立API服務 ----- #
 router = APIRouter(prefix="/v1", tags=["LLM Inference"])
@@ -94,9 +91,8 @@ router = APIRouter(prefix="/v1", tags=["LLM Inference"])
 async def LLM_Response(uid: str, prompt: str):
     if uid not in CacheDict:
         uid = str(uuid.uuid4())
-    Cache = CacheDict.get(uid, DynamicCache())
     ids = tokenizer.encode(MSG.format(prompt=prompt))
-    TaskQueue.put(ids, uid)
+    TaskQueue.put((ids, uid))
     return StreamingResponse(RequestsHandler(uid), media_type="text/plain")
 
 app = FastAPI(title="LLM Service", version="2.0.0")
