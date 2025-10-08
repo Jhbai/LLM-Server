@@ -86,8 +86,9 @@ async def RequestsHandler(uid, TaskQueue, ResDict):
     end_flag = False
     text = ""
     while "<end_of_turn>" not in text:
-        ids = ResDict.get(uid, None)
-        if ids is None:
+        if uid in ResDict:
+            ids = ResDict.pop(uid)
+        else:
             continue
         if 106 in ids:
             end_flag = True
