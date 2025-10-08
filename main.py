@@ -58,7 +58,7 @@ def Inference_Engine(TaskQueue, ResDict):
 
     while True:
         if not TaskQueue.empty():
-            ids, request_id = TaskQueue.get_nowait()
+            ids, request_id, status = TaskQueue.get_nowait()
             Cache = CacheDict.get(request_id, DynamicCache())
             ids_tensor = torch.tensor(ids)
             if len(ids_tensor.shape) < 2:
@@ -66,7 +66,7 @@ def Inference_Engine(TaskQueue, ResDict):
             print("TaskQueue Input:", ids_tensor)
             request = model.Request(
                                 input_ids = ids_tensor,
-                                status = model.RequestStatus.PREFILLING,
+                                status = status,
                                 request_id = request_id,
                                 kv_cache = Cache
             )
@@ -83,15 +83,20 @@ def Inference_Engine(TaskQueue, ResDict):
                 CacheDict[uid] = DCACHES[i]
                 
 async def RequestsHandler(uid, TaskQueue, ResDict):
+    end_flag = False
     text = ""
     while "<end_of_turn>" not in text:
         ids = ResDict.get(uid, None)
         if ids is None:
             continue
+        if 106 in ids:
+            end_flag = True
         input_ids = torch.tensor(ids[-1:]).unsqueeze(0)
-        TaskQueue.put((input_ids, uid))
+        TaskQueue.put((input_ids, uid, model.RequestStatus.DECODING))
         text += tokenizer.decode(ids, skip_special_tokens=True)
-        yield text
+        yield tokenizer.decode(ids, skip_special_tokens=True)
+        if end_flag:
+            break
     
 # ----- 建立API服務 ----- #
 app = FastAPI(title="LLM Service", version="2.0.0")
@@ -112,7 +117,7 @@ def startup():
 async def LLM_Response(uid: str, prompt: str):
     TaskQueue, ResDict = app.state.TaskQueue, app.state.ResDict
     ids = tokenizer.encode(MSG.format(prompt=prompt))
-    TaskQueue.put((ids, uid))
+    TaskQueue.put((ids, uid, model.RequestStatus.PREFILLING))
     return StreamingResponse(RequestsHandler(uid, TaskQueue, ResDict), media_type="text/plain")
 
 if __name__ == "__main__":
